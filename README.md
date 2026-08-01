@@ -313,7 +313,6 @@ Recommended input for a Jetson Orin Nano Super reference baseline:
 wirestead_ref: v0.9.0
 runner_labels: ["self-hosted","Linux","ARM64","jetson-orin-nano-super"]
 platform_suffix: linux-arm64-jetson-orin-nano-super
-release_suffix: jetson-orin-nano-super
 reference_platform: Jetson Orin Nano Super
 publish_release: true
 ```
@@ -324,8 +323,10 @@ this naming pattern:
 
 ```text
 benchmark-wirestead-v0.9.0
-benchmark-wirestead-v0.9.0-jetson-orin-nano-super
 ```
+
+Leave `release_suffix` empty. The platform is already identified by the release title and by the artifact file names,
+so putting it in the tag as well only produces two spellings of the same thing.
 
 Each release artifact contains:
 
