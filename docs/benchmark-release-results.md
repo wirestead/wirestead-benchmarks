@@ -32,11 +32,8 @@ For Wirestead 0.9.0:
 benchmark-wirestead-v0.9.0
 ```
 
-For a Jetson Orin Nano Super reference result:
-
-```text
-benchmark-wirestead-v0.9.0-jetson-orin-nano-super
-```
+The tag carries no platform suffix, including for reference results on a specific board. The platform belongs in the
+release title and in the artifact file names, which already carry it.
 
 Recommended release title:
 
@@ -100,7 +97,6 @@ For a Jetson Orin Nano Super reference baseline, use:
 wirestead_ref: v0.9.0
 runner_labels: ["self-hosted","Linux","ARM64","jetson-orin-nano-super"]
 platform_suffix: linux-arm64-jetson-orin-nano-super
-release_suffix: jetson-orin-nano-super
 reference_platform: Jetson Orin Nano Super
 publish_release: true
 payload_sizes: 64 256 1024 4096 16384 65536

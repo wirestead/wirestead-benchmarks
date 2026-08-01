@@ -20,7 +20,7 @@ on:
         required: true
         default: "linux-x64-self-hosted"
       release_suffix:
-        description: "Optional suffix used in release tag names, for example jetson-orin-nano-super"
+        description: "Deprecated. Leave empty; release tags carry no platform suffix. The platform is identified by the release title and the artifact file names."
         required: false
         default: ""
       reference_platform:
