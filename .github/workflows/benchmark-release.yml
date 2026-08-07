@@ -32,6 +32,15 @@ on:
         required: true
         type: boolean
         default: true
+      latency_only:
+        description: >-
+          Run only the latency matrix, skipping the strategy sweep and the UDP
+          smokes. For A/B comparisons between two refs, where the strategy sweep
+          is ~19 of the ~25 minutes spent benchmarking and answers a different
+          question. Never publishes a release: the result set is incomplete.
+        required: false
+        type: boolean
+        default: false
       build_parallelism:
         description: "Parallel build jobs; keep low on memory-constrained self-hosted runners"
         required: true
@@ -133,6 +142,7 @@ jobs:
           UDP_PAYLOAD_SMOKE_ITERATIONS: ${{ inputs.udp_payload_smoke_iterations }}
           UDP_PAYLOAD_SMOKE_WARMUP_ITERATIONS: ${{ inputs.udp_payload_smoke_warmup_iterations }}
           UDP_PAYLOAD_SMOKE_TIMEOUT_MS: ${{ inputs.udp_payload_smoke_timeout_ms }}
+          LATENCY_ONLY: ${{ inputs.latency_only }}
         run: |
           set -euo pipefail
           result_dir="build/release-results"
@@ -143,6 +153,11 @@ jobs:
           OUTPUT="${result_dir}/latency_matrix.csv" \
           SUMMARY="${result_dir}/latency_matrix_summary.md" \
           ./scripts/run_latency_matrix.sh
+
+          if [[ "${LATENCY_ONLY}" == "true" ]]; then
+            echo "latency_only: skipping the strategy sweep and the UDP smokes"
+            exit 0
+          fi
 
           OUTPUT="${result_dir}/strategy_sweep.csv" \
           SUMMARY="${result_dir}/strategy_sweep_summary.md" \
@@ -194,7 +209,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload release assets
-        if: ${{ inputs.publish_release && startsWith(steps.target.outputs.target_ref, 'v') }}
+        if: ${{ inputs.publish_release && !inputs.latency_only && startsWith(steps.target.outputs.target_ref, 'v') }}
         env:
           GH_TOKEN: ${{ github.token }}
           WIRESTEAD_REF: ${{ steps.target.outputs.target_ref }}
