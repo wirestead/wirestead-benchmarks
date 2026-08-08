@@ -136,6 +136,7 @@ endfunction()
 
 add_wirestead_benchmark(bench_tcp_echo_server benchmarks/tcp/tcp_echo_server.cpp)
 add_wirestead_benchmark(bench_tcp_latency_client benchmarks/tcp/tcp_latency_client.cpp)
+add_wirestead_benchmark(bench_tcp_load_latency benchmarks/tcp/tcp_load_latency.cpp)
 add_wirestead_benchmark(bench_udp_echo_server benchmarks/udp/udp_echo_server.cpp)
 add_wirestead_benchmark(bench_udp_latency_client benchmarks/udp/udp_latency_client.cpp)
 add_wirestead_benchmark(bench_udp_payload_smoke benchmarks/udp/udp_payload_smoke.cpp)
