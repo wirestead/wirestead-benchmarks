@@ -1,0 +1,181 @@
+name: Load Sweep
+
+# Sweeps concurrent connection count against a *fixed total* offered load, so
+# anything that moves is attributable to concurrency rather than to throughput.
+# Getting that wrong is easy: a first attempt at this sweep divided a fixed
+# total by the connection count, hit an integer-division floor, and silently
+# raised the offered load 2.5x at the top of the sweep - which then looked like
+# the library falling over. rate_per_connection is computed here and the run
+# fails rather than clamp.
+#
+# This is deliberately not part of benchmark-release.yml: it answers a
+# scalability question, produces no release artifact, and would otherwise drag
+# the release path's packaging along for the ride.
+
+on:
+  workflow_dispatch:
+    inputs:
+      wirestead_ref:
+        description: "Wirestead tag, branch, or commit to benchmark"
+        required: true
+        default: "main"
+      runner_labels:
+        description: "JSON array of self-hosted runner labels"
+        required: true
+        default: '["self-hosted","Linux","ARM64","jetson-orin-nano-super"]'
+      connections:
+        description: "Space-separated connection counts to sweep"
+        required: true
+        default: "8 32 128 256 512"
+      total_rate:
+        description: >-
+          Aggregate messages/second, held constant across the sweep.
+          rate_per_connection is total_rate / connections and must stay >= 1,
+          so the largest connection count bounds how low this can go.
+        required: true
+        default: "8000"
+      duration_ms:
+        description: "Measured window per point, milliseconds"
+        required: true
+        default: "4000"
+      payload_size:
+        description: "Payload bytes"
+        required: true
+        default: "256"
+      burst:
+        description: "Messages queued per tick; 1 keeps one in flight, 16 exercises the gather write"
+        required: true
+        default: "1"
+      max_connections:
+        description: >-
+          Refuse any point above this. The runner is shared hardware and a
+          sweep that wedges it also blocks release benchmarks.
+        required: true
+        default: "512"
+      build_parallelism:
+        description: "Parallel build jobs; keep low on memory-constrained self-hosted runners"
+        required: true
+        default: "2"
+
+# Two sweeps on one runner would interleave their load and invalidate both.
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.runner_labels }}
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Load sweep ${{ inputs.wirestead_ref }}
+    runs-on: ${{ fromJSON(inputs.runner_labels) }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout benchmark repo
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DWIRESTEAD_BENCH_USE_FETCHCONTENT=ON
+          -DWIRESTEAD_BENCH_GIT_TAG="${{ inputs.wirestead_ref }}"
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --target bench_tcp_load_latency --parallel "${{ inputs.build_parallelism }}"
+
+      - name: Sweep
+        env:
+          CONNECTIONS: ${{ inputs.connections }}
+          TOTAL_RATE: ${{ inputs.total_rate }}
+          DURATION_MS: ${{ inputs.duration_ms }}
+          PAYLOAD_SIZE: ${{ inputs.payload_size }}
+          BURST: ${{ inputs.burst }}
+          MAX_CONNECTIONS: ${{ inputs.max_connections }}
+        run: |
+          set -euo pipefail
+          result_dir="build/load-results"
+          mkdir -p "${result_dir}"
+          csv="${result_dir}/load_sweep.csv"
+          python3 scripts/collect_environment.py "${result_dir}"
+
+          port=41000
+          for conns in ${CONNECTIONS}; do
+            if [ "${conns}" -gt "${MAX_CONNECTIONS}" ]; then
+              echo "refusing ${conns} connections: above max_connections=${MAX_CONNECTIONS}" >&2
+              exit 1
+            fi
+
+            rate=$(( TOTAL_RATE / conns ))
+            if [ "${rate}" -lt 1 ]; then
+              echo "total_rate=${TOTAL_RATE} over ${conns} connections rounds to 0 msg/s/connection." >&2
+              echo "Raise total_rate or drop the largest connection counts - clamping here would" >&2
+              echo "change the offered load mid-sweep and make the points incomparable." >&2
+              exit 1
+            fi
+
+            port=$((port + 1))
+            echo "::group::${conns} connections at ${rate} msg/s each"
+            # Threads and RSS are the point as much as latency: one io thread per
+            # client is the design being measured.
+            ./build/bin/bench_tcp_load_latency \
+              --port "${port}" \
+              --connections "${conns}" \
+              --rate-per-connection "${rate}" \
+              --duration-ms "${DURATION_MS}" \
+              --payload-size "${PAYLOAD_SIZE}" \
+              --burst "${BURST}" \
+              --csv-output "${csv}" &
+            bench_pid=$!
+
+            peak_threads=0
+            peak_rss=0
+            while kill -0 "${bench_pid}" 2>/dev/null; do
+              threads=$(awk '/^Threads:/{print $2}' "/proc/${bench_pid}/status" 2>/dev/null || echo 0)
+              rss=$(awk '/^VmRSS:/{print $2}' "/proc/${bench_pid}/status" 2>/dev/null || echo 0)
+              [ "${threads:-0}" -gt "${peak_threads}" ] && peak_threads=${threads}
+              [ "${rss:-0}" -gt "${peak_rss}" ] && peak_rss=${rss}
+              sleep 0.2
+            done
+            wait "${bench_pid}"
+
+            echo "peak threads: ${peak_threads}  peak RSS: $((peak_rss / 1024)) MiB"
+            printf '%s,%s,%s,%s\n' "${conns}" "${rate}" "${peak_threads}" "${peak_rss}" \
+              >> "${result_dir}/load_sweep_resources.csv"
+            echo "::endgroup::"
+          done
+
+          {
+            echo "wirestead_ref,${{ inputs.wirestead_ref }}"
+            echo "connections,${CONNECTIONS}"
+            echo "total_rate,${TOTAL_RATE}"
+            echo "duration_ms,${DURATION_MS}"
+            echo "payload_size,${PAYLOAD_SIZE}"
+            echo "burst,${BURST}"
+          } > "${result_dir}/load_sweep.meta"
+
+      - name: Summarise
+        if: always()
+        run: |
+          set -euo pipefail
+          csv="build/load-results/load_sweep.csv"
+          res="build/load-results/load_sweep_resources.csv"
+          [ -f "${csv}" ] || { echo "no results"; exit 0; }
+          {
+            echo "| conns | rate/conn | threads | RSS | lag p99 | p50 | p99 | p99.9 | dropped |"
+            echo "|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+            tail -n +2 "${csv}" | while IFS=, read -r _t conns rate _burst _pay _dur _sent dropped _recv _l50 lag99 _lmax p50 p99 p999 _max; do
+              line=$(grep "^${conns},${rate}," "${res}" 2>/dev/null | head -1)
+              threads=$(cut -d, -f3 <<<"${line}")
+              rss=$(cut -d, -f4 <<<"${line}")
+              echo "| ${conns} | ${rate} | ${threads:-?} | $(( ${rss:-0} / 1024 )) MiB | ${lag99} | ${p50} | ${p99} | ${p999} | ${dropped} |"
+            done
+            echo ""
+            echo "lag p99 is the harness's own lateness. If it is not small against p99 the run measured the harness."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-sweep-${{ inputs.wirestead_ref }}
+          path: build/load-results/
+          if-no-files-found: warn
