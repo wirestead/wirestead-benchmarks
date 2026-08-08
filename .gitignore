@@ -69,6 +69,16 @@ Testing/
 .cache/
 
 # agent-rules (local only)
-AGENTS.md
-CLAUDE.md
-GEMINI.md
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/.agent-rules/bases/
+/.codex/skills/investigate-bug/
+/.claude/skills/investigate-bug/
+/.codex/skills/review-change/
+/.claude/skills/review-change/
+/.codex/skills/validate-change/
+/.claude/skills/validate-change/
+/.codex/skills/prepare-commit/
+/.claude/skills/prepare-commit/
+
