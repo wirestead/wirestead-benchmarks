@@ -1,0 +1,67 @@
+name: Controlled Orin Comparison
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Baseline core tag, branch or SHA
+        required: true
+        default: v0.9.6
+      candidate_ref:
+        description: Candidate core tag, branch or SHA (must be pushed)
+        required: true
+        default: main
+permissions:
+  contents: read
+concurrency:
+  group: wirestead-self-hosted-benchmarks
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: [self-hosted, Linux, ARM64, jetson-orin-nano-super]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: wirestead/wirestead
+          ref: ${{ inputs.baseline_ref }}
+          path: _cores/baseline
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: wirestead/wirestead
+          ref: ${{ inputs.candidate_ref }}
+          path: _cores/candidate
+          persist-credentials: false
+      - name: Check installed clock controller
+        run: sudo -n /usr/bin/python3 -I /usr/local/libexec/wirestead-clock-run.py --check
+      - name: Record source identity
+        run: |
+          mkdir -p evidence
+          git rev-parse HEAD > evidence/benchmark-sha.txt
+          git -C _cores/baseline rev-parse HEAD > evidence/baseline-sha.txt
+          git -C _cores/candidate rev-parse HEAD > evidence/candidate-sha.txt
+      - name: Build and compare as ordinary user
+        run: |
+          sudo -n /usr/bin/python3 -I /usr/local/libexec/wirestead-clock-run.py             --label "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --timeout 6600 --             /bin/bash "$GITHUB_WORKSPACE/scripts/run_controlled_comparison.sh" "$GITHUB_WORKSPACE/evidence/results"
+      - name: Collect clock evidence
+        if: always()
+        run: |
+          mkdir -p evidence/controller
+          source="/var/log/wirestead-benchmark/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [ -d "$source" ]; then cp "$source/"*.json evidence/controller/; fi
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-orin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            evidence/**/*.json
+            evidence/**/*.jsonl
+            evidence/**/*.csv
+            evidence/**/*.log
+            evidence/**/*.md
+            evidence/*-sha.txt
+          if-no-files-found: warn
