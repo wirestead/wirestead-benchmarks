@@ -13,6 +13,8 @@ if(DEFINED UNILINK_BENCH_USE_FETCHCONTENT
   message(FATAL_ERROR "UNILINK_BENCH_USE_FETCHCONTENT conflicts with WIRESTEAD_BENCH_USE_FETCHCONTENT")
 endif()
 
+option(WIRESTEAD_BENCH_REQUEST_TRACE "Build opt-in per-request diagnostic tracing" OFF)
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -113,6 +115,7 @@ endif()
 file(
   WRITE "${CMAKE_BINARY_DIR}/wirestead_bench_metadata.csv"
   "key,value\n"
+  "request_trace_compiled,${WIRESTEAD_BENCH_REQUEST_TRACE}\n"
   "wirestead_source_kind,${WIRESTEAD_BENCH_SOURCE_KIND}\n"
   "wirestead_requested_ref,${WIRESTEAD_BENCH_REQUESTED_REF}\n"
   "wirestead_source_path,${WIRESTEAD_BENCH_SOURCE_PATH}\n"
@@ -125,6 +128,9 @@ file(
 )
 
 add_library(wirestead_bench_common INTERFACE)
+if(WIRESTEAD_BENCH_REQUEST_TRACE)
+  target_compile_definitions(wirestead_bench_common INTERFACE WIRESTEAD_BENCH_REQUEST_TRACE=1)
+endif()
 target_include_directories(wirestead_bench_common
                            INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks)
 target_link_libraries(wirestead_bench_common INTERFACE ${WIRESTEAD_BENCH_TARGET})

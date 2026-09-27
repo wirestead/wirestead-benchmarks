@@ -1,6 +1,15 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstdlib>
+#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
+#include <fstream>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
+#endif
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -73,6 +82,11 @@ template <typename Client>
 int run_latency_client(std::string_view transport, Client& client, size_t payload_size, size_t iterations,
                        size_t warmup_iterations = 0,
                        const std::optional<std::string>& csv_output = std::nullopt) {
+#ifndef WIRESTEAD_BENCH_REQUEST_TRACE
+  if (std::getenv("WIRESTEAD_REQUEST_TRACE")) {
+    throw std::runtime_error("request tracing requires WIRESTEAD_BENCH_REQUEST_TRACE=ON");
+  }
+#endif
   if (!client.start_sync()) {
     std::cerr << "Failed to start " << transport << " client\n";
     return 1;
@@ -82,6 +96,15 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
   const std::string frame = make_frame(payload);
   std::vector<int64_t> samples;
   samples.reserve(iterations);
+#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
+  const char* trace_path = std::getenv("WIRESTEAD_REQUEST_TRACE");
+  struct RequestTrace { int64_t start, submitted, end; };
+  std::vector<RequestTrace> traces;
+  if (trace_path) traces.reserve(iterations);
+  const auto nanoseconds = [](TimePoint t) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
+  };
+#endif
 
   auto run_iteration = [&](size_t i, bool record_sample) {
     auto& waiter = client.echo_waiter();
@@ -94,6 +117,9 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
       return false;
     }
 
+#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
+    const auto submitted = now();
+#endif
     const std::string echoed = waiter.wait_for_echo(std::chrono::seconds(5));
     const auto end = now();
 
@@ -105,6 +131,9 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
 
     if (record_sample) {
       samples.push_back(elapsed_us(start, end));
+#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
+      if (trace_path) traces.push_back({nanoseconds(start), nanoseconds(submitted), nanoseconds(end)});
+#endif
     }
     return true;
   };
@@ -127,6 +156,21 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
 
   client.stop();
 
+#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
+  if (trace_path) {
+    std::ofstream output(trace_path);
+#ifdef _WIN32
+    const auto pid = _getpid();
+#else
+    const auto pid = getpid();
+#endif
+    output << "pid,iteration,start_ns,send_return_ns,end_ns\n";
+    for (size_t i = 0; i < traces.size(); ++i)
+      output << pid << ',' << i << ',' << traces[i].start << ',' << traces[i].submitted << ','
+             << traces[i].end << '\n';
+    if (!output) throw std::runtime_error("request trace write failed");
+  }
+#endif
   const auto result = make_latency_result(transport, payload_size, iterations, warmup_iterations,
                                           seconds_between(total_start, total_end),
                                           compute_latency_stats(std::move(samples)));

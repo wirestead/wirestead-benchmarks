@@ -82,3 +82,5 @@ Testing/
 /.codex/skills/prepare-commit/
 /.claude/skills/prepare-commit/
 
+
+__pycache__/
