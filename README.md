@@ -170,6 +170,15 @@ build/latency_matrix_summary.md
 build/latency_matrix.csv.meta
 ```
 
+## Controlled version comparisons
+
+Compare two prebuilt versions in ABBA order, record build hashes and telemetry,
+and retain per-run ranges and admission/delivery data. Optional Linux helpers
+provide CPU placement, explicit fixed-clock execution and diagnostic request /
+scheduler timelines. They do not alter the default benchmark or release flow.
+
+See [Controlled comparisons and diagnostics](docs/controlled-comparison.md).
+
 ## Backpressure Strategy
 
 Wirestead supports two backpressure strategies:

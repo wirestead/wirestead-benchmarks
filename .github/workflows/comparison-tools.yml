@@ -1,0 +1,43 @@
+name: Comparison Tools
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  tooling:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        core: [v0.9.6, main]
+        trace: ["OFF", "ON"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libboost-system-dev libspdlog-dev
+      - name: Test comparison safeguards
+        run: python3 -m unittest discover -s tests -v
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DWIRESTEAD_BENCH_USE_FETCHCONTENT=ON
+          -DWIRESTEAD_BENCH_GIT_TAG=${{ matrix.core }}
+          -DWIRESTEAD_BENCH_REQUEST_TRACE=${{ matrix.trace }}
+          -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j2
+      - name: Functional self-comparison
+        shell: bash
+        run: |
+          extra=()
+          if [[ "${{ matrix.trace }}" == ON ]]; then extra+=(--request-traces); fi
+          python3 scripts/compare_builds.py --baseline-build build --candidate-build build \
+            --output build/comparison-smoke --payloads 64 --duration 1 \
+            --iterations 100 --warmup 10 "${extra[@]}"
+          python3 scripts/summarize_comparison.py build/comparison-smoke
+      - name: Retain comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparison-${{ matrix.core }}-${{ matrix.trace }}
+          path: build/comparison-smoke
