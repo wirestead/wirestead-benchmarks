@@ -2,6 +2,10 @@
 set -euo pipefail
 [[ $(id -u) == 0 ]] || { echo "Run this installer with sudo" >&2; exit 1; }
 id jorin >/dev/null
+# Keep installation out of any active manual/CI controller interval.
+if [[ "${1:-}" != --lock-held ]]; then
+  exec flock -n /run/lock/wirestead-benchmark-cpufreq.lock /bin/bash "$0" --lock-held
+fi
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 controller=/usr/local/libexec/wirestead-clock-run.py
 policy=/etc/sudoers.d/wirestead-benchmark
