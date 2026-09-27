@@ -19,7 +19,7 @@ class UdpBenchClient {
   }
 
   bool start_sync() { return client_->start_sync(); }
-  bool send_frame(std::string_view frame) { return client_->send_blocking(frame); }
+  bool send_frame(std::string_view frame) { return static_cast<bool>(client_->send_blocking(frame)); }
   void stop() { client_->stop(); }
   wirestead_bench::EchoWaiter& echo_waiter() { return waiter_; }
 
