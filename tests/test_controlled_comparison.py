@@ -15,6 +15,21 @@ import summarize_comparison as summary
 import with_fixed_clocks as clocks
 
 
+class TelemetryTests(unittest.TestCase):
+    def test_transient_sysfs_read_is_missing_not_fatal(self):
+        source = Mock()
+        source.read_bytes.side_effect = [None, BlockingIOError(), b"55312\n"]
+        self.assertIsNone(runner.read(source))
+        self.assertIsNone(runner.read(source))
+        self.assertEqual(runner.read(source), "55312")
+
+    def test_unreadable_sensor_is_not_a_measurement(self):
+        source = Mock()
+        source.read_bytes.side_effect = [PermissionError(), b"\xff"]
+        self.assertIsNone(runner.read(source))
+        self.assertIsNone(runner.read(source))
+
+
 class SummaryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

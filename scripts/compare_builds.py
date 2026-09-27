@@ -28,8 +28,11 @@ def digest(path):
 
 def read(path):
     try:
-        return path.read_text().strip()
-    except OSError:
+        # Some sysfs drivers temporarily return EAGAIN. Binary reads can
+        # return None; TextIOWrapper on Python 3.10 raises TypeError instead.
+        data = path.read_bytes()
+        return None if data is None else data.decode("utf-8").strip()
+    except (OSError, UnicodeError):
         return None
 
 
