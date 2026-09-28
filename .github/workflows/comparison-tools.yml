@@ -23,6 +23,7 @@ jobs:
           -DWIRESTEAD_BENCH_USE_FETCHCONTENT=ON
           -DWIRESTEAD_BENCH_GIT_TAG=${{ matrix.core }}
           -DWIRESTEAD_BENCH_REQUEST_TRACE=${{ matrix.trace }}
+          -DWIRESTEAD_BENCH_CONTROLLED_TCP=${{ matrix.core == 'main' && 'ON' || 'OFF' }}
           -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build -j2
@@ -35,9 +36,26 @@ jobs:
             --output build/comparison-smoke --payloads 64 --duration 1 \
             --iterations 100 --warmup 10 "${extra[@]}"
           python3 scripts/summarize_comparison.py build/comparison-smoke
+      - name: Verify controlled TCP roles and comparison
+        if: matrix.core == 'main'
+        run: |
+          python3 tests/test_tcp_controlled.py build/bin/bench_tcp_controlled -v
+          python3 - <<'PY'
+          import os, subprocess
+          cpus = (sorted(os.sched_getaffinity(0)) * 4)[:4]
+          command = ['python3', 'scripts/compare_controlled_tcp.py',
+                     '--baseline-build', 'build', '--candidate-build', 'build',
+                     '--rounds', '1', '--duration-ms', '200', '--warmup-messages', '16',
+                     '--payloads', '64', '--output', 'build/controlled-smoke']
+          for role, cpu in zip(['main', 'sender', 'client', 'server'], cpus):
+              command += ['--' + role + '-cpu', str(cpu)]
+          subprocess.run(command, check=True)
+          PY
       - name: Retain comparison evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: comparison-${{ matrix.core }}-${{ matrix.trace }}
-          path: build/comparison-smoke
+          path: |
+            build/comparison-smoke
+            build/controlled-smoke
