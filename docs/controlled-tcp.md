@@ -26,3 +26,11 @@ python3 tests/test_tcp_controlled.py build/bin/bench_tcp_controlled -v
 The integration check runs both strategies, verifies all four role records and delivery, exercises invalid options, and checks worker pin/start failure cleanup. General unittest discovery skips these opt-in integration checks when no executable was supplied.
 
 For comparisons, use identical fixture source/flags and unchanged core libraries, unique output paths, serial ABBA trials (at least 6 per version/condition), and retain role records plus hardware/clock evidence. This is a throughput fixture; it does not measure p99 or prove loaded latency, memory or fairness gates.
+
+## Repeated comparison
+
+```sh
+python3 scripts/compare_controlled_tcp.py --baseline-build /path/to/baseline --candidate-build /path/to/candidate --main-cpu 0 --sender-cpu 1 --client-cpu 2 --server-cpu 3 --rounds 3 --output /path/to/new-results
+```
+
+The runner creates a fresh output directory, runs both strategies in separate processes, checks role/TID evidence and delivery/ledger fields, fingerprints binaries and linked libraries before/after, and retains telemetry and failures. It removes diagnostic preloads and library overrides. It does not change clocks or invoke sudo; use the existing controlled clock runner when required. A shared layout can assign sender and client to the same CPU in a separate comparison.
