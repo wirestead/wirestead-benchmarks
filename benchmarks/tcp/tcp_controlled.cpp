@@ -3,7 +3,8 @@
 // strategy matrix.
 #include "wirestead_bench_target.hpp"
 #include <atomic>
-#include <boost/asio.hpp>
+#include <wirestead/concurrency/io_thread_hook.hpp>
+
 #include <charconv>
 #include <chrono>
 #include <condition_variable>
@@ -27,7 +28,7 @@
 #include <utility>
 
 using Clock = std::chrono::steady_clock;
-namespace net = boost::asio;
+
 struct Config {
   std::string strategy, csv;
   int main_cpu = -1, sender_cpu = -1, client_cpu = -1, server_cpu = -1;
@@ -104,36 +105,37 @@ void pin(const char *role, int cpu) {
       << "ROLE role=" << role << " tid=" << syscall(SYS_gettid)
       << " cpu=" << cpu << " verified=1\n";
 }
-struct Executor {
-  std::shared_ptr<net::io_context> io = std::make_shared<net::io_context>();
-  net::executor_work_guard<net::io_context::executor_type> guard =
-      net::make_work_guard(*io);
-  std::jthread worker;
-  Executor(const char *role, int cpu) {
-    std::promise<void> ready;
-    auto future = ready.get_future();
-    worker = std::jthread([this, role, cpu, ready = std::move(ready)](
-                              std::stop_token token) mutable {
-      std::stop_callback stop(token, [this] { io->stop(); });
-      try {
-        pin(role, cpu);
-        ready.set_value();
-      } catch (...) {
-        ready.set_exception(std::current_exception());
-        return;
-      }
-      io->run();
-    });
+struct RoleState {
+  std::promise<void> ready;
+  std::future<void> future = ready.get_future();
+  std::atomic<unsigned> calls{0};
+  std::atomic<long> tid{0};
+  void wait() {
+    if (future.wait_for(std::chrono::seconds(2)) != std::future_status::ready)
+      throw std::runtime_error("missing executor role hook");
     future.get();
-  }
-  ~Executor() {
-    guard.reset();
-    io->stop();
-    worker.request_stop();
-    if (worker.joinable())
-      worker.join();
+    if (calls.load() != 1)
+      throw std::runtime_error("unexpected executor thread count");
   }
 };
+struct HookScope {
+  ~HookScope() { wirestead::concurrency::set_io_thread_init(nullptr); }
+};
+std::shared_ptr<RoleState> install_role(const char *role, int cpu) {
+  auto state = std::make_shared<RoleState>();
+  wirestead::concurrency::set_io_thread_init([state, role, cpu] {
+    if (state->calls.fetch_add(1) != 0)
+      return;
+    try {
+      pin(role, cpu);
+      state->tid.store(syscall(SYS_gettid));
+      state->ready.set_value();
+    } catch (...) {
+      state->ready.set_exception(std::current_exception());
+    }
+  });
+  return state;
+}
 template <class Client>
 void drain(Client &client, const std::atomic<uint64_t> &received,
            uint64_t bytes) {
@@ -165,24 +167,44 @@ std::optional<uint64_t> validate_ledger(const Stats &stats) {
 }
 int run(const Config &c) {
   pin("bench-main", c.main_cpu);
-  Executor server_io("bench-server", c.server_cpu),
-      client_io("bench-client", c.client_cpu);
+  HookScope hooks;
+  auto server_role = install_role("bench-server", c.server_cpu);
   std::atomic<uint64_t> received{0};
-  wirestead::TcpServer server(static_cast<uint16_t>(c.port), server_io.io);
-  server.manage_external_context(false).shared_context(true);
-  server.on_data([&](const wirestead::MessageContext &ctx) {
+  std::atomic<bool> server_callback_ok{false}, client_callback_ok{false};
+  wirestead::TcpServer server(static_cast<uint16_t>(c.port));
+  server.on_data([&, checked =
+                         false](const wirestead::MessageContext &ctx) mutable {
+    if (!checked) {
+      checked = true;
+      server_callback_ok.store(syscall(SYS_gettid) == server_role->tid.load() &&
+                               sched_getcpu() == c.server_cpu);
+      std::osyncstream(std::cout)
+          << "CALLBACK_ROLE role=bench-server tid=" << syscall(SYS_gettid)
+          << " cpu=" << sched_getcpu()
+          << " verified=" << server_callback_ok.load() << '\n';
+    }
     received.fetch_add(ctx.data().size(), std::memory_order_relaxed);
   });
   if (!server.start_sync())
     throw std::runtime_error("server start failed");
-  wirestead::TcpClient client("127.0.0.1", static_cast<uint16_t>(c.port),
-                              client_io.io);
-  client.manage_external_context(false).backpressure_strategy(
+  server_role->wait();
+  auto client_role = install_role("bench-client", c.client_cpu);
+  wirestead::TcpClient client("127.0.0.1", static_cast<uint16_t>(c.port));
+  client.backpressure_strategy(
       c.strategy == "reliable"
           ? wirestead::base::constants::BackpressureStrategy::Reliable
           : wirestead::base::constants::BackpressureStrategy::BestEffort);
+  client.on_connect([&](const auto &) {
+    client_callback_ok.store(syscall(SYS_gettid) == client_role->tid.load() &&
+                             sched_getcpu() == c.client_cpu);
+    std::osyncstream(std::cout)
+        << "CALLBACK_ROLE role=bench-client tid=" << syscall(SYS_gettid)
+        << " cpu=" << sched_getcpu()
+        << " verified=" << client_callback_ok.load() << '\n';
+  });
   if (!client.start_sync())
     throw std::runtime_error("client start failed");
+  client_role->wait();
   std::mutex mutex;
   std::condition_variable_any cv;
   bool go = false;
@@ -237,6 +259,9 @@ int run(const Config &c) {
   });
   warm_future.get();
   drain(client, received, c.warmup * c.payload);
+  if (!server_callback_ok.load() || !client_callback_ok.load() ||
+      server_role->calls.load() != 1 || client_role->calls.load() != 1)
+    throw std::runtime_error("callback executor role mismatch");
   client.reset_stats();
   server.reset_stats();
   received.store(0);

@@ -158,7 +158,7 @@ if(WIRESTEAD_BENCH_HAS_RUNTIME_STATS)
   target_compile_definitions(bench_strategy_matrix PRIVATE WIRESTEAD_BENCH_HAS_RUNTIME_STATS=1)
 endif()
 
-option(WIRESTEAD_BENCH_CONTROLLED_TCP "Build Linux TCP benchmark with explicit executor ownership" OFF)
+option(WIRESTEAD_BENCH_CONTROLLED_TCP "Build Linux TCP benchmark with verified executor roles" OFF)
 if(WIRESTEAD_BENCH_CONTROLLED_TCP)
   if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT WIRESTEAD_BENCH_HAS_RUNTIME_STATS)
     message(FATAL_ERROR "Controlled TCP requires Linux and runtime stats support")

@@ -9,9 +9,12 @@ def validate(row,log,strategy,payload,cpus):
     if row['transport']!='tcp' or row['strategy']!=strategy or int(row['payload_size'])!=payload:
         raise ValueError('wrong benchmark condition')
     expected=dict(zip(['bench-main','bench-sender','bench-client','bench-server'],cpus))
-    roles=re.findall(r'ROLE role=(\S+) tid=(\d+) cpu=(\d+) verified=1',log)
+    roles=re.findall(r'^ROLE role=(\S+) tid=(\d+) cpu=(\d+) verified=1',log,re.MULTILINE)
     if len(roles)!=4 or len({tid for role,tid,cpu in roles})!=4 or {role:int(cpu) for role,tid,cpu in roles}!=expected:
         raise ValueError('missing or incorrect role affinity evidence')
+    callbacks=re.findall(r'^CALLBACK_ROLE role=(\S+) tid=(\d+) cpu=(\d+) verified=1',log,re.MULTILINE)
+    executor_roles={(role,tid,cpu) for role,tid,cpu in roles if role in ['bench-client','bench-server']}
+    if len(callbacks)!=2 or set(callbacks)!=executor_roles:raise ValueError('callback executed outside verified role')
     if [int(row[k+'_cpu']) for k in ['main','sender','client','server']]!=cpus:
         raise ValueError('CSV CPU configuration mismatch')
     if int(row['accepted_messages'])<=0 or int(row['accepted_messages'])*payload!=int(row['accepted_bytes']) or row['accepted_bytes']!=row['received_bytes']:

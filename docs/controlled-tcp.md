@@ -1,6 +1,6 @@
 # Controlled TCP throughput
 
-`bench_tcp_controlled` is an opt-in Linux benchmark for one TCP strategy per process. Enable `-DWIRESTEAD_BENCH_CONTROLLED_TCP=ON`. It requires the modern wrapper external-context constructors, `manage_external_context`, server `shared_context`, resettable runtime stats, and C++20. Default builds and the existing six-phase matrix are unchanged.
+`bench_tcp_controlled` is an opt-in Linux benchmark for one TCP strategy per process. Enable `-DWIRESTEAD_BENCH_CONTROLLED_TCP=ON`. It requires the public `set_io_thread_init` hook, dedicated wrapper contexts and resettable runtime stats, and C++20. Default builds and the existing six-phase matrix are unchanged.
 
 Example:
 
@@ -10,7 +10,7 @@ Example:
 
 Use `reliable` or `besteffort`; each invocation produces exactly one CSV row. The CSV path is overwritten, so use a unique file per trial. Choose CPUs available on the host. Every role pins itself, reads back the affinity mask, checks the current CPU, and emits its role, Linux TID, CPU and verification result. Invalid CPU assignments fail the run. Do not use the ordinal-based affinity preload with this target.
 
-The benchmark owns one client io_context worker and one shared server io_context worker; the server session uses the server context. The sender and controller have their own explicit CPUs. Library auxiliary threads such as the resolver may still exist. This topology is intentionally different from the default strategy matrix; do not compute improvements by mixing the two fixtures.
+Each channel owns its library-managed dedicated io_context. The benchmark installs a role-specific initialization hook before each channel starts, requires exactly one hook invocation, and verifies that the real connect/data callbacks run on that role's TID and CPU. The server session uses its server's context. No external Asio object crosses the library boundary. The sender and controller have their own explicit CPUs. Library auxiliary threads such as the resolver may still exist. This topology is intentionally different from the default strategy matrix; do not compute improvements by mixing the two fixtures.
 
 The same sender thread sends the warmup and measurement traffic. Before releasing the start gate, all warmup bytes must be received, reported as sent, and absent from queued/pending stats. Runtime stats are then reset and received bytes cleared. The sender records its actual start and end; throughput divides by actual elapsed time, which is recorded alongside requested duration. A send already in progress may finish after the stop timer. After sending, the fixture waits up to 10 seconds for accepted bytes to be received and write completions to drain. Warmup is excluded from the measured counters.
 

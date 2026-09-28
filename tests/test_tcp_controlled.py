@@ -16,9 +16,11 @@ class ControlledTCP(unittest.TestCase):
    with self.subTest(strategy=strategy):
     p=subprocess.run(self.command(strategy),capture_output=True,text=True,timeout=20)
     self.assertEqual(p.returncode,0,p.stdout+p.stderr)
-    roles=re.findall(r'ROLE role=(\S+) tid=(\d+) cpu=(\d+) verified=1',p.stdout)
+    roles=re.findall(r'^ROLE role=(\S+) tid=(\d+) cpu=(\d+) verified=1',p.stdout,re.MULTILINE)
     self.assertEqual({name:int(cpu) for name,tid,cpu in roles},dict(zip(['bench-main','bench-sender','bench-client','bench-server'],self.cpus)))
     self.assertEqual(len({tid for name,tid,cpu in roles}),4)
+    callbacks=re.findall(r'^CALLBACK_ROLE role=(\S+) tid=(\d+) cpu=(\d+) verified=1',p.stdout,re.MULTILINE)
+    self.assertEqual(set(callbacks),{x for x in roles if x[0] in ['bench-client','bench-server']})
     with self.output.open() as f:rows=list(csv.DictReader(f))
     self.assertEqual(len(rows),1);row=rows[0];self.assertEqual(row['strategy'],strategy)
     self.assertGreater(int(row['accepted_messages']),0)
