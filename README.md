@@ -498,3 +498,7 @@ cmake --build build
 ## License
 
 Apache-2.0
+
+### Controlled TCP throughput
+
+For one-strategy-per-process runs with explicit sender/client/server CPU roles and drained warmup, see [controlled TCP](docs/controlled-tcp.md). This opt-in fixture uses a different topology from the default matrix.
