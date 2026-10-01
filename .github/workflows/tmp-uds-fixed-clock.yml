@@ -1,0 +1,56 @@
+# Temporary: wirestead#702 focused UDS verification with fixed CPU clocks.
+# Runs only on pushes to this branch. Delete the branch after use.
+name: tmp UDS fixed-clock comparison
+on:
+  push:
+    branches: [tmp/uds-fixed-clock-702]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: [self-hosted, Linux, ARM64, jetson-orin-nano-super]
+    timeout-minutes: 120
+    env:
+      BASELINE_REF: v0.9.6
+      CANDIDATE_REF: e0fd6e606e175b57af7486d58233fa5382b7b2aa
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build baseline and candidate
+        run: |
+          set -euo pipefail
+          for side in baseline candidate; do
+            ref=$([[ $side == baseline ]] && echo "$BASELINE_REF" || echo "$CANDIDATE_REF")
+            cmake -S . -B "build-$side" -DWIRESTEAD_BENCH_USE_FETCHCONTENT=ON \
+              -DWIRESTEAD_BENCH_GIT_TAG="$ref" -DCMAKE_BUILD_TYPE=Release
+            cmake --build "build-$side" --parallel 2
+          done
+
+      - name: Clock controller preflight
+        run: |
+          mkdir -p results
+          sudo -n python3 scripts/with_fixed_clocks.py --check --user "$(id -un)" --log-dir "$PWD/results/clock-check"
+
+      - name: Fixed-clock ABBA comparison (UDS 64B/1KiB, 6 per version)
+        run: |
+          set -euo pipefail
+          sudo -n python3 scripts/with_fixed_clocks.py --user "$(id -un)" \
+            --log-dir "$PWD/results/clock" --timeout 5400 -- \
+            python3 "$PWD/scripts/compare_builds.py" \
+              --baseline-build "$PWD/build-baseline" --candidate-build "$PWD/build-candidate" \
+              --output "$PWD/results/comparison" \
+              --payloads 64 1024 --transports uds --suite all --abba-rounds 3
+          python3 scripts/summarize_comparison.py results/comparison | tee results/summary.txt
+
+      - name: Return root-written evidence to the runner user
+        if: always()
+        run: sudo -n chown -R "$(id -un):$(id -gn)" results
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uds-fixed-clock-702
+          path: results/
