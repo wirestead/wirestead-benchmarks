@@ -41,6 +41,21 @@ class ControlledTCP(unittest.TestCase):
                 self.assertEqual(int(row['client_queued_bytes_final']), 0)
                 self.assertEqual(int(row['client_pending_bytes_final']), 0)
 
+    def test_large_warmup_drains_before_measurement(self):
+        for strategy in ['reliable', 'besteffort']:
+            with self.subTest(strategy=strategy):
+                command = self.command(strategy) + ['--payload-size', '4096', '--warmup-messages', '512']
+                result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                with self.output.open() as stream:
+                    row, = csv.DictReader(stream)
+                self.assertEqual(row['payload_size'], '4096')
+                self.assertEqual(row['warmup_messages'], '512')
+                self.assertEqual(int(row['accepted_messages']) * 4096, int(row['accepted_bytes']))
+                self.assertEqual(row['accepted_bytes'], row['received_bytes'])
+                self.assertEqual(row['client_queued_bytes_final'], '0')
+                self.assertEqual(row['client_pending_bytes_final'], '0')
+
     def test_invalid_options(self):
         for extra in [['--strategy', 'unknown'], ['--sender-cpu', '-1'], ['--client-cpu', '1024'], ['--warmup-messages', '0'], ['--payload-size', '1x'], ['--duration-ms']]:
             with self.subTest(extra=extra):
