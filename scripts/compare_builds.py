@@ -147,7 +147,10 @@ def latency(args, build, name, transport, size):
                 client_flags = flags if transport == "uds" else ["--host", "127.0.0.1"] + flags
                 env = dict(os.environ)
                 env.pop("WIRESTEAD_REQUEST_TRACE", None)
+                env.pop("WIRESTEAD_LATENCY_SAMPLES", None)
                 env.pop("LD_PRELOAD", None)
+                if args.latency_samples:
+                    env["WIRESTEAD_LATENCY_SAMPLES"] = str(args.output / (name + "-samples.csv"))
                 if args.request_traces:
                     env["WIRESTEAD_REQUEST_TRACE"] = str(args.output / (name + "-requests.csv"))
                 client_pid = execute(command(build / "bin" / f"bench_{transport}_latency_client", args.client_cpu)
@@ -160,6 +163,12 @@ def latency(args, build, name, transport, size):
     end_ns = time.monotonic_ns()
     (args.output / (name + "-window.json")).write_text(json.dumps({
         "start_ns": start_ns, "end_ns": end_ns, "client_pid": client_pid, "server_pid": server.pid}))
+    if args.latency_samples:
+        samples = rows(args.output / (name + "-samples.csv"))
+        if len(samples) != args.iterations or any(
+                int(x["iteration"]) != i or int(x["rtt_ns"]) < 0
+                for i, x in enumerate(samples)):
+            raise ValueError("latency sample count or value mismatch")
     if args.request_traces:
         trace = rows(args.output / (name + "-requests.csv"))
         if len(trace) != args.iterations or not all(
@@ -221,6 +230,8 @@ def main():
     parser.add_argument("--matrix-worker-cpus", help="comma-separated creation-order worker CPUs for the helper")
     parser.add_argument("--server-cpu", type=int)
     parser.add_argument("--client-cpu", type=int)
+    parser.add_argument("--latency-samples", action="store_true",
+                        help="write post-run RTT samples in ns alongside unchanged integer-us CSV")
     parser.add_argument("--request-traces", action="store_true", help="requires diagnostic-enabled clients")
     args = parser.parse_args()
     if sys.platform != "linux":

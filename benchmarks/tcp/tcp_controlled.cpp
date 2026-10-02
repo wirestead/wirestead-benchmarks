@@ -2,6 +2,7 @@
 // intentional: these results must not be compared directly with the default
 // strategy matrix.
 #include "wirestead_bench_target.hpp"
+#include <algorithm>
 #include <atomic>
 #include <wirestead/concurrency/io_thread_hook.hpp>
 
@@ -220,9 +221,15 @@ int run(const Config &c) {
     try {
       pin("bench-sender", c.sender_cpu);
       const std::string payload(c.payload, 'A');
-      for (size_t i = 0; i < c.warmup; ++i)
+      // Keep warmup below legacy BestEffort queue pressure. Large payloads
+      // must not turn preparation into an unmeasured overload/drop test.
+      const auto warmup_window = std::max<size_t>(1, (64 * 1024) / c.payload);
+      for (size_t i = 0; i < c.warmup; ++i) {
         if (!client.send(payload))
           throw std::runtime_error("warmup send rejected");
+        if ((i + 1) % warmup_window == 0)
+          drain(client, received, (i + 1) * c.payload);
+      }
       warm.set_value();
       {
         std::unique_lock lock(mutex);

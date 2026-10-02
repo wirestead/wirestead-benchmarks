@@ -2,8 +2,8 @@
 
 #include <condition_variable>
 #include <cstdlib>
-#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
 #include <fstream>
+#ifdef WIRESTEAD_BENCH_REQUEST_TRACE
 #ifdef _WIN32
 #include <process.h>
 #else
@@ -94,6 +94,7 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
 
   const std::string payload = make_payload(payload_size);
   const std::string frame = make_frame(payload);
+  const char* samples_path = std::getenv("WIRESTEAD_LATENCY_SAMPLES");
   std::vector<int64_t> samples;
   samples.reserve(iterations);
 #ifdef WIRESTEAD_BENCH_REQUEST_TRACE
@@ -130,7 +131,7 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
     }
 
     if (record_sample) {
-      samples.push_back(elapsed_us(start, end));
+      samples.push_back(elapsed_ns(start, end));
 #ifdef WIRESTEAD_BENCH_REQUEST_TRACE
       if (trace_path) traces.push_back({nanoseconds(start), nanoseconds(submitted), nanoseconds(end)});
 #endif
@@ -171,6 +172,16 @@ int run_latency_client(std::string_view transport, Client& client, size_t payloa
     if (!output) throw std::runtime_error("request trace write failed");
   }
 #endif
+  // Export the same timed samples after the run; keep legacy CSV values in
+  // truncated microseconds. Recording does not add clocks or per-request I/O.
+  if (samples_path) {
+    std::ofstream output(samples_path);
+    output << "iteration,rtt_ns\n";
+    for (size_t i = 0; i < samples.size(); ++i) output << i << ',' << samples[i] << '\n';
+    output.close();
+    if (!output) throw std::runtime_error("latency sample write failed");
+  }
+  for (auto& sample : samples) sample /= 1000;
   const auto result = make_latency_result(transport, payload_size, iterations, warmup_iterations,
                                           seconds_between(total_start, total_end),
                                           compute_latency_stats(std::move(samples)));

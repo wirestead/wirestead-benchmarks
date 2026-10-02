@@ -448,6 +448,16 @@ Each benchmark reports:
 Outlier counts use `latency_us > threshold_us`. Summary tables use the median across repeated runs, matching existing
 latency summary behavior. These counts help distinguish one-off max spikes from repeated tail-latency behavior.
 
+Latency clients retain RTT durations in nanoseconds before deriving the existing
+integer-microsecond statistics. For decisions near a microsecond boundary, set
+`WIRESTEAD_LATENCY_SAMPLES=/path/to/samples.csv` for a single client or pass
+`--latency-samples` to `scripts/compare_builds.py`. Each comparison run writes a
+separate `*-samples.csv` with `iteration,rtt_ns`, excluding warmup. Export occurs
+after the client stops; it adds no clock calls or per-request file I/O. Standard
+CSV fields, percentile ranks and outlier meanings are unchanged. Nanosecond units
+do not imply nanosecond timer accuracy. Use the same fixture for both versions,
+retain the earlier result, and report a new measurement method separately.
+
 The strategy benchmark reports:
 
 - accepted MiB/sec

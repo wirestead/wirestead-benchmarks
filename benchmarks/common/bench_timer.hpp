@@ -15,6 +15,10 @@ inline double seconds_between(TimePoint start, TimePoint end) {
   return std::chrono::duration<double>(end - start).count();
 }
 
+inline int64_t elapsed_ns(TimePoint start, TimePoint end) {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
+
 inline int64_t elapsed_us(TimePoint start, TimePoint end) {
   return std::chrono::duration_cast<Microseconds>(end - start).count();
 }
