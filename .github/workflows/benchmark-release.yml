@@ -89,6 +89,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: wirestead-self-hosted-benchmarks
+  cancel-in-progress: false
+
 jobs:
   benchmark:
     name: Benchmark Wirestead ${{ inputs.wirestead_ref || inputs.unilink_ref }}
