@@ -59,7 +59,7 @@ on:
 
 # Two sweeps on one runner would interleave their load and invalidate both.
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.runner_labels }}
+  group: wirestead-self-hosted-benchmarks
   cancel-in-progress: false
 
 jobs:
