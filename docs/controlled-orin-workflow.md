@@ -30,7 +30,10 @@ The arbitrary child command is executed by a transient systemd service as jorin,
 with a clean environment. All descendants, including new process groups, remain
 in that service cgroup. Time limit is at most two hours, stop timeout five seconds.
 The controller stops that service before restoring clocks on normal completion,
-error, timeout and handled INT/TERM/HUP. SIGKILL of the controller, kernel failure,
+error, timeout, and when its sudo parent exits. INT/TERM/HUP sent to sudo are not
+relayed to the controller, and a cancelled Actions job ends with the runner
+killing sudo, so the controller polls for that once a second and treats it as an
+interrupt. Signals sent to the controller itself need root. SIGKILL of the controller, kernel failure,
 power loss or a broken sysfs driver cannot be guaranteed recoverable automatically;
 inspect /var/log/wirestead-benchmark if a run terminates abnormally.
 

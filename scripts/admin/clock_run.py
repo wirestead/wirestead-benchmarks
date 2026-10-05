@@ -111,7 +111,23 @@ def parse(argv=None):
     return args
 
 
+def wait_or_orphaned(proc, timeout, parent, poll=1.0):
+    # sudo neither relays INT/TERM/HUP here nor takes this process with it when
+    # it is killed, which is how a runner cancels a job. Treat losing the sudo
+    # parent as an interrupt so the service stops and clocks are restored now.
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return proc.wait(timeout=max(0, min(poll, deadline - time.monotonic())))
+        except subprocess.TimeoutExpired:
+            if os.getppid() != parent:
+                raise KeyboardInterrupt("parent sudo exited")
+            if time.monotonic() >= deadline:
+                raise
+
+
 def main():
+    parent = os.getppid()
     args = parse()
     account = pwd.getpwnam(USER)
     if os.geteuid() != 0 or account.pw_uid == 0 or os.environ.get("SUDO_UID") != str(account.pw_uid):
@@ -154,7 +170,7 @@ def main():
             proc = None
             try:
                 proc = subprocess.Popen(command_for(account, args.command, args.label, args.timeout), start_new_session=True)
-                return proc.wait(timeout=args.timeout + 15)
+                return wait_or_orphaned(proc, args.timeout + 15, parent)
             finally:
                 ignore_signals()
                 unit = "wirestead-benchmark-" + args.label + ".service"

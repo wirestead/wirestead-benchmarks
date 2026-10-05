@@ -116,5 +116,18 @@ class ControllerTest(unittest.TestCase):
             controller.fixed_clocks(policies, lambda: 0, lambda *args: None,
                                     write, lambda: restoring.append(True))
 
+    def test_wait_stops_when_sudo_parent_exits(self):
+        proc = mock.Mock()
+        proc.wait.side_effect = subprocess.TimeoutExpired("command", 0)
+        with mock.patch.object(controller.os, "getppid", return_value=1):
+            with self.assertRaises(KeyboardInterrupt):
+                controller.wait_or_orphaned(proc, 60, parent=4242, poll=0)
+        with mock.patch.object(controller.os, "getppid", return_value=4242):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                controller.wait_or_orphaned(proc, 0, parent=4242, poll=0)
+        proc.wait.side_effect = None
+        proc.wait.return_value = 3
+        self.assertEqual(controller.wait_or_orphaned(proc, 60, parent=4242, poll=0), 3)
+
 if __name__ == "__main__":
     unittest.main()
