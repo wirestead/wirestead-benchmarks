@@ -9,7 +9,7 @@ fi
 source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 controller=/usr/local/libexec/wirestead-clock-run.py
 policy=/etc/sudoers.d/wirestead-benchmark
-for path in /usr/local/libexec /var/log/wirestead-benchmark; do
+for path in /usr/local/libexec /var/lib/wirestead-benchmark; do
   [[ ! -L "$path" ]] || { echo "Refusing symlink: $path" >&2; exit 1; }
   install -d -o root -g root -m 0755 "$path"
 done

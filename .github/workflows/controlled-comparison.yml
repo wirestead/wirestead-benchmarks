@@ -50,7 +50,7 @@ jobs:
         if: always()
         run: |
           mkdir -p evidence/controller
-          source="/var/log/wirestead-benchmark/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          source="/var/lib/wirestead-benchmark/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           if [ -d "$source" ]; then cp "$source/"*.json evidence/controller/; fi
       - name: Upload evidence
         if: always()

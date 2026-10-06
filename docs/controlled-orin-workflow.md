@@ -35,9 +35,9 @@ relayed to the controller, and a cancelled Actions job ends with the runner
 killing sudo, so the controller polls for that once a second and treats it as an
 interrupt. Signals sent to the controller itself need root. SIGKILL of the controller, kernel failure,
 power loss or a broken sysfs driver cannot be guaranteed recoverable automatically;
-inspect /var/log/wirestead-benchmark if a run terminates abnormally.
+inspect /var/lib/wirestead-benchmark if a run terminates abnormally.
 
-Root-owned, read-only evidence is under /var/log/wirestead-benchmark/LABEL.
+Root-owned, read-only evidence is under /var/lib/wirestead-benchmark/LABEL.
 No files under a user-provided output directory are opened by root.
 The shared lock /run/lock/wirestead-benchmark-cpufreq.lock also excludes the
 existing manual controller. A busy device fails preflight instead of joining

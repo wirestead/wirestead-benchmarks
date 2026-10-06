@@ -14,7 +14,10 @@ import time
 import uuid
 
 USER = "jorin"
-LOG_ROOT = Path("/var/log/wirestead-benchmark")
+# Not under /var/log: rsyslog's tmpfiles rule resets /var/log to 0775
+# root:syslog on every boot, and secure_directory() rejects any writable
+# ancestor, so the controller refused to run after each reboot.
+LOG_ROOT = Path("/var/lib/wirestead-benchmark")
 LOCK = Path("/run/lock/wirestead-benchmark-cpufreq.lock")
 
 
