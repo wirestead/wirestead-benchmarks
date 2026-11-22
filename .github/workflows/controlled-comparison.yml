@@ -10,6 +10,10 @@ on:
         description: Candidate core tag, branch or SHA (must be pushed)
         required: true
         default: main
+      latency_only:
+        description: Skip the split/shared throughput matrices and run only the latency suite
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -44,8 +48,10 @@ jobs:
           git -C _cores/baseline rev-parse HEAD > evidence/baseline-sha.txt
           git -C _cores/candidate rev-parse HEAD > evidence/candidate-sha.txt
       - name: Build and compare as ordinary user
+        env:
+          LATENCY_ONLY: ${{ inputs.latency_only }}
         run: |
-          sudo -n /usr/bin/python3 -I /usr/local/libexec/wirestead-clock-run.py             --label "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --timeout 6600 --             /bin/bash "$GITHUB_WORKSPACE/scripts/run_controlled_comparison.sh" "$GITHUB_WORKSPACE/evidence/results"
+          sudo -n /usr/bin/python3 -I /usr/local/libexec/wirestead-clock-run.py             --label "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" --timeout 6600 --             /bin/bash "$GITHUB_WORKSPACE/scripts/run_controlled_comparison.sh" "$GITHUB_WORKSPACE/evidence/results" "$LATENCY_ONLY"
       - name: Collect clock evidence
         if: always()
         run: |
