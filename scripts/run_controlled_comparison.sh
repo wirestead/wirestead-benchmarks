@@ -4,6 +4,8 @@ set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
 output="${1:?provide a new output directory}"
+# Passed as an argument: the clock controller runs this script through sudo, which drops the environment.
+latency_only="${2:-false}"
 [[ ! -e "$output" ]] || { echo "Output already exists" >&2; exit 1; }
 mkdir -p "$output"
 toolchain=/home/jorin/workspace/unilink-lab/vcpkg/scripts/buildsystems/vcpkg.cmake
@@ -16,6 +18,7 @@ cc -shared -fPIC -O2 scripts/diagnostics/thread_affinity.c -o "$output/thread_af
 # Let compilation activity settle before the serial comparison.
 sleep 20
 for layout in split shared; do
+  [[ "$latency_only" != true ]] || break
   cpus=1,2,3,4
   [[ "$layout" != shared ]] || cpus=1,2,0,3
   python3 scripts/compare_builds.py --baseline-build "$output/build-baseline"     --candidate-build "$output/build-candidate" --output "$output/$layout"     --suite matrix --payloads 64 1024 4096 --duration 3 --abba-rounds 3     --matrix-preload "$output/thread_affinity.so" --matrix-main-cpu 0 --matrix-worker-cpus "$cpus"
